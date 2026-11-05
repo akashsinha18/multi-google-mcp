@@ -1,0 +1,27 @@
+# fly launch --no-deploy --copy-config, then edit `app` and `primary_region`.
+app = "multi-google-mcp"
+primary_region = "iad"
+
+[build]
+
+[env]
+  DATA_DIR = "/data"
+  PORT = "8080"
+
+[[mounts]]
+  source = "mgm_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
