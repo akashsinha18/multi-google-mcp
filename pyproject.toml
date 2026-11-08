@@ -1,0 +1,36 @@
+[project]
+name = "multi-google-mcp"
+version = "0.1.0"
+description = "Remote MCP server giving Claude access to multiple Google accounts (Gmail + Drive)"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastmcp>=4.1,<5",
+    "google-api-python-client>=2.200",
+    "google-auth>=2.60",
+    "google-auth-oauthlib>=1.5",
+    "requests>=2.32",
+    "cryptography>=45",
+    "html2text>=2025.4.15",
+    "pypdf>=6",
+    "uvicorn>=0.35",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9", "pytest-asyncio>=1.4"]
+
+[project.scripts]
+multi-google-mcp = "multi_google_mcp.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/multi_google_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["src"]
