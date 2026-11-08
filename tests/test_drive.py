@@ -133,3 +133,46 @@ async def test_create_file_converts_to_google_doc(ctx, runner):
 async def test_create_file_rejects_binary_types(ctx):
     with pytest.raises(drive.DriveError):
         await drive.create_file(ctx, "work", "x", "y", mime_type="image/png")
+
+
+def _minimal_pdf(text: str) -> bytes:
+    """Build a one-page PDF with a text object (valid xref offsets)."""
+    stream = f"BT /F1 24 Tf 72 720 Td ({text}) Tj ET".encode()
+    objs = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
+        b"/Resources << /Font << /F1 5 0 R >> >> >>",
+        b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for i, body in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n" % i + body + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1)
+    out += b"".join(b"%010d 00000 n \n" % o for o in offsets)
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objs) + 1, xref)
+    return bytes(out)
+
+
+async def test_read_pdf_extracts_text(ctx, runner):
+    pdf = _minimal_pdf("Quarterly revenue grew")
+    runner.services[("work", "drive")] = FakeDrive(
+        meta={"p1": {"id": "p1", "name": "r.pdf", "mimeType": drive.PDF, "size": str(len(pdf))}},
+        media={"p1": pdf},
+    )
+    res = await drive.read_file(ctx, "p1", "work")
+    assert res["format"] == "text" and res["pages"] == 1
+    assert "Quarterly revenue grew" in res["content"]
+    assert res["truncated"] is False
+
+
+async def test_read_oversized_pdf_returns_metadata_only(ctx, runner):
+    runner.services[("work", "drive")] = FakeDrive(
+        meta={"p2": {"id": "p2", "name": "big.pdf", "mimeType": drive.PDF, "size": str(drive.MAX_DOWNLOAD_BYTES + 1)}}
+    )
+    res = await drive.read_file(ctx, "p2", "work")
+    assert res["supported"] is False and "limit" in res["reason"]
