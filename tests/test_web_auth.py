@@ -102,3 +102,37 @@ def test_invalid_alias_rejected(client, crypto):
 
 def test_healthz(client):
     assert client.get("/healthz").json() == {"status": "ok"}
+
+
+def _pkce_challenge(verifier: str) -> str:
+    import base64
+    import hashlib
+    return base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+
+
+@pytest.mark.parametrize("path", ["/accounts/login", "/accounts/connect?alias=work"])
+def test_pkce_verifier_in_state_matches_challenge(client, crypto, path):
+    client.cookies.set(SESSION_COOKIE, crypto.seal({"purpose": "session", "email": "me@example.com"}), path="/accounts")
+    r = client.get(path, follow_redirects=False)
+    q = parse_qs(urlparse(r.headers["location"]).query)
+    state = crypto.unseal(q["state"][0], 600)
+    assert state["cv"], "PKCE verifier must be stored in the sealed state"
+    assert q["code_challenge"] == [_pkce_challenge(state["cv"])]
+
+
+def test_callback_exchange_sends_the_stored_verifier(client, crypto, monkeypatch):
+    """The token request must use the verifier from the sealed state, not a new one."""
+    from multi_google_mcp import web
+
+    sent = {}
+
+    def fake_fetch_token(self, **kwargs):
+        sent["code_verifier"] = kwargs.get("code_verifier", self.code_verifier)
+        raise RuntimeError("stop after capturing")
+
+    monkeypatch.setattr(web.Flow, "fetch_token", fake_fetch_token)
+    r = client.get("/accounts/login", follow_redirects=False)
+    state_tok = parse_qs(urlparse(r.headers["location"]).query)["state"][0]
+    cv = crypto.unseal(state_tok, 600)["cv"]
+    client.get(f"/accounts/callback?state={state_tok}&code=abc")
+    assert sent["code_verifier"] == cv

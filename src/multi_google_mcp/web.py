@@ -80,13 +80,16 @@ class AccountsWeb:
             }
         }
 
-    def _flow(self, scopes: list[str], code_verifier: str | None = None) -> Flow:
+    def _flow(self, scopes: list[str], code_verifier: str) -> Flow:
+        # Always pass the verifier explicitly: the library only autogenerates it
+        # lazily inside authorization_url(), and a callback-side flow must reuse
+        # the exact verifier from the sealed state, never mint a new one.
         return Flow.from_client_config(
             self._client_config(),
             scopes=scopes,
             redirect_uri=self.settings.accounts_redirect_uri,
             code_verifier=code_verifier,
-            autogenerate_code_verifier=code_verifier is None,
+            autogenerate_code_verifier=False,
         )
 
     def _session_email(self, request: Request) -> str | None:
@@ -105,9 +108,10 @@ class AccountsWeb:
 
     def _start_oauth(self, scopes: list[str], state_payload: dict[str, Any],
                      extra: dict[str, str]) -> Response:
-        flow = self._flow(scopes)
+        code_verifier = secrets.token_urlsafe(64)  # 86 chars of [A-Za-z0-9_-], valid per RFC 7636
+        flow = self._flow(scopes, code_verifier)
         nonce = secrets.token_urlsafe(24)
-        state = self.crypto.seal({**state_payload, "nonce": nonce, "cv": flow.code_verifier})
+        state = self.crypto.seal({**state_payload, "nonce": nonce, "cv": code_verifier})
         url, _ = flow.authorization_url(state=state, **extra)
         resp = RedirectResponse(url, status_code=302)
         self._set_cookie(resp, NONCE_COOKIE, nonce, STATE_TTL)
@@ -118,7 +122,9 @@ class AccountsWeb:
 
     def _exchange(self, scopes: list[str], code_verifier: str, code: str) -> tuple[Any, dict[str, Any]]:
         """Blocking: exchange the code and verify the ID token."""
-        flow = self._flow(scopes, code_verifier=code_verifier)
+        if not code_verifier:
+            raise ValueError("missing PKCE verifier in state")
+        flow = self._flow(scopes, code_verifier)
         flow.fetch_token(code=code)
         creds = flow.credentials
         if not creds.id_token:
