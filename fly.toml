@@ -1,12 +1,14 @@
 # fly launch --no-deploy --copy-config, then edit `app` and `primary_region`.
-app = "multi-google-mcp"
-primary_region = "iad"
+app = "multi-google-mcp-s8ic9"
+primary_region = "sjc"
 
 [build]
 
 [env]
   DATA_DIR = "/data"
   PORT = "8080"
+  BASE_URL = "https://multi-google-mcp-s8ic9.fly.dev"
+  MCP_ALLOWED_REDIRECT_URIS = "https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback"
 
 [[mounts]]
   source = "mgm_data"

@@ -123,3 +123,20 @@ async def test_no_bodies_or_tokens_in_logs(ctx, runner, caplog):
     await gmail.get_thread(ctx, "t1", "work")
     assert "body of TopSecretSubject" not in caplog.text
     assert "rt-work" not in caplog.text
+
+
+def test_clean_snippet_unescapes_entities_and_strips_filler():
+    from multi_google_mcp.text import clean_snippet
+    raw = "don&#39;t &amp; &quot;go&quot; ͏ ‌ ﻿ ͏ ‌ ﻿ end­"
+    assert clean_snippet(raw) == 'don\'t & "go" end'
+    assert clean_snippet(None) is None
+    # zero-width joiner inside emoji sequences is preserved
+    assert clean_snippet("hi \U0001F468‍\U0001F4BB") == "hi \U0001F468‍\U0001F4BB"
+
+
+async def test_search_returns_clean_snippets(ctx, runner):
+    msg = gmail_message("w1", 1, "s")
+    msg["snippet"] = "it&#39;s here ͏‌﻿"
+    runner.services[("work", "gmail")] = FakeGmail([msg])
+    res = await gmail.search(ctx, "x", account="work")
+    assert res["messages"][0]["snippet"] == "it's here"

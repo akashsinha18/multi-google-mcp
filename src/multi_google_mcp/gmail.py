@@ -12,7 +12,7 @@ from typing import Any
 from .context import AppContext
 from .fanout import decode_page_tokens, encode_page_tokens, fan_out, merge_sorted
 from .store import Account
-from .text import html_to_text, normalize_whitespace, truncate
+from .text import clean_snippet, html_to_text, normalize_whitespace, truncate
 
 SEARCH_HEADERS = ["From", "To", "Subject", "Date"]
 THREAD_HEADERS = {"from", "to", "cc", "bcc", "date", "subject", "reply-to"}
@@ -92,7 +92,7 @@ def _search_one(service: Any, query: str, max_results: int, page_token: str | No
                 "from": h.get("from"),
                 "to": h.get("to"),
                 "subject": h.get("subject"),
-                "snippet": msg.get("snippet"),
+                "snippet": clean_snippet(msg.get("snippet")),
                 "unread": "UNREAD" in labels,
                 "labels": [l for l in labels if l != "UNREAD"],
             }
