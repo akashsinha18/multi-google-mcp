@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html as htmllib
 import re
 
 import html2text
@@ -25,6 +26,21 @@ def normalize_whitespace(text: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = _TRAILING_WS.sub("\n", text)
     return _BLANK_LINES.sub("\n\n", text).strip()
+
+
+# Invisible "preheader padding" that marketing emails use to pad snippets:
+# combining grapheme joiner, zero-width space/non-joiner, word joiner, BOM, soft hyphen.
+# U+200D (zero-width joiner) is kept: it glues emoji sequences together.
+_FILLER = dict.fromkeys(map(ord, "͏​‌⁠﻿­"))
+_SPACES = re.compile(r"\s+")
+
+
+def clean_snippet(snippet: str | None) -> str | None:
+    """Gmail snippets are HTML-escaped and often padded with invisible chars."""
+    if snippet is None:
+        return None
+    text = htmllib.unescape(snippet).translate(_FILLER)
+    return _SPACES.sub(" ", text).strip()
 
 
 def truncate(text: str, limit: int) -> tuple[str, bool]:
